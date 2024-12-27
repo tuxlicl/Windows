@@ -1,7 +1,13 @@
-#
-#
-#
-#
+##
+# Autor              : Claudio Aliste Requena
+# Email              : aliste.claudio@gmail.com
+# Fecha creación     : 31/08/2024
+# Fecha modificación : 27/12/2024
+# Propósito          : Conectarse por powershell al Tenant de OF365 y cargar de manera masiva las licencias a los usuarios indicados en el archivo usuarios.csv
+# Versión            : 2.0
+# ***** DISCLAIMER ******: En caso de hacerle una mejora, informar para tener el script actualizado
+# ***** DISCLAIMER 2 *****: No me hago responsable del mal uso de este script, es de uso netamente interno y para auditar cuentas y configuracioens en un entorno de Active Directory.
+
 # Ruta al archivo CSV con los usuarios
 $csvPath = "C:\ruta\al\archivo\usuarios.csv" 
 
