@@ -1,8 +1,10 @@
+#
 # Autor              : Claudio Aliste Requena
 # Email              : aliste.claudio@gmail.com
 # Fecha creación     : 01/03/2021
 # Fecha modificación : 06/01/2024
-# Propósito          : Informe que valida la integridad de la DB del AD, replicación, DNS, SysVol, roles del AD y los servicios de funcionamiento, Enumera la cantidad de Domains Controllers y los roles en caso de tener
+# Propósito          : Informe que valida la integridad de la DB del AD, replicación, DNS, SysVol, roles del AD y los servicios de funcionamiento.
+#                       Enumera la cantidad de Domains Controllers y los roles en caso de tener, indica el nivel funcional del dominio y de la foresta jerarquica del mismo
 #
 # Versión            : 2.0
 # ***** DISCLAIMER ******: En caso de hacerle una mejora, comentar lo que hace y enviar por correo para generar la actualizacion del mismo
@@ -56,6 +58,19 @@ try {
     Add-Content -Path $reportPath -Value $integrityResult
 } catch {
     Add-Content -Path $reportPath -Value "Error durante la validación: $($_.Exception.Message)"
+}
+# Consulta nivel funcional de domnio y bosque de AD
+Add-Content -Path $reportPath -Value "`n=== Nivel Funcional de Dominio y Bosque ==="
+try {
+    # Obtener nivel funcional del Dominio
+    $domainMode = (Get-ADDomain).DomainMode
+    # Obtener nivel funcional del Bosque
+    $forestMode = (Get-ADForest).ForestMode
+
+    Add-Content -Path $reportPath -Value "Nivel Funcional del Dominio: $domainMode"
+    Add-Content -Path $reportPath -Value "Nivel Funcional del Bosque: $forestMode"
+} catch {
+    Add-Content -Path $reportPath -Value "Error al obtener el nivel funcional del dominio o bosque: $($_.Exception.Message)"
 }
 
 # Enumeración de DC
