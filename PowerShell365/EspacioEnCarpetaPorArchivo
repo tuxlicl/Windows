@@ -1,0 +1,46 @@
+<#
+Autor              : Claudio Aliste
+Email              : aliste.claudio@gmail.com
+Fecha creación     : 31/03/2025
+Fecha modificación : 
+Propósito          : Busca losarchivos con x extensión, los cuenta, entrega en un log y en pantalla la totalidad del archivo y el peso de ellos en la carpeta, el valor del peso lo entrega en GB
+Versión            : 2.0
+#>
+
+# ==================== CONFIGURACIÓN ====================
+$extension = "*.*"  # Cambia la extensión según lo necesites
+$carpeta   = "X:\xxx\xxx\x"  # Carpeta que deseas analizar
+$logPath   = "C:\Logs\conteo_archivos_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+# =======================================================
+
+# Crear carpeta de logs si no existe
+$logDir = Split-Path $logPath
+if (!(Test-Path $logDir)) {
+    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+}
+
+# Validar carpeta de búsqueda
+if (!(Test-Path $carpeta)) {
+    Write-Host "❌ Carpeta no encontrada: $carpeta" -ForegroundColor Red
+    exit
+}
+
+# Obtener archivos que coinciden con la extensión
+$archivos = Get-ChildItem -Path $carpeta -Recurse -File -Filter "*$extension" -ErrorAction SilentlyContinue
+
+# Calcular cantidad y tamaño total en GB
+$cantidad = $archivos.Count
+$tamanoTotalGB = [math]::Round(($archivos | Measure-Object -Property Length -Sum).Sum / 1GB, 2)
+
+# Crear texto de salida
+$resultado = @"
+📂 Ruta analizada: $carpeta
+📄 Extensión buscada: $extension
+🧮 Cantidad de archivos encontrados: $cantidad
+💾 Tamaño total: $tamanoTotalGB GB
+=========================================================
+"@
+
+# Mostrar en pantalla y guardar en log
+Write-Host $resultado -ForegroundColor Cyan
+Add-Content -Path $logPath -Value $resultado

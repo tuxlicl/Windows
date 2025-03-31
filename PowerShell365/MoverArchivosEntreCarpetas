@@ -1,0 +1,102 @@
+<#
+Autor              : Claudio Aliste
+Email              : aliste.claudio@gmail.com
+Fecha creación     : 31/03/2025
+Fecha modificación : 
+Propósito          : Mueve archivos entre dos carpetas, buscando la extensión Necesaria y genera un log de salida del resultado
+Versión            : 2.0
+#>
+
+
+# ======================== CONFIGURACIÓN =========================
+$origen     = "C:\xxx\xxxx\" # Carpeta origen de datos a mover
+$destino    = "\\xxxx\xx\xxxx" # Carpeta de destino de archivos
+$extension  = "*.*"  #extensión de archivos a mover
+
+# Fechas en formato seguro (yyyy-MM-dd)
+$fechaInicio = Get-Date "2025-03-12"
+$fechaFin    = Get-Date "2025-03-13"
+
+# Ruta de log
+$logPath = "C:\Logs\movimiento_archivos_$(Get-Date -Format 'yyyyMMdd_HHmmss').log" # Carpeta que se crea al movimiento de Logs
+$logDir = Split-Path $logPath
+if (!(Test-Path $logDir)) {
+    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+}
+# ===============================================================
+
+
+# -------- Verificar carpeta de origen --------
+if (!(Test-Path $origen)) {
+    Write-Host "❌ Carpeta de origen no encontrada: $origen" -ForegroundColor Red
+    exit
+} else {
+    Write-Host "✅ Carpeta de origen verificada: $origen" -ForegroundColor Green
+}
+
+# -------- Verificar carpeta de destino --------
+if (!(Test-Path $destino)) {
+    Write-Host "⚠ Carpeta de destino no encontrada. Intentando crear: $destino" -ForegroundColor Yellow
+    try {
+        New-Item -ItemType Directory -Path $destino -Force | Out-Null
+        Write-Host "✅ Carpeta de destino creada correctamente." -ForegroundColor Green
+    } catch {
+        Write-Host "❌ No se pudo crear la carpeta de destino: $_" -ForegroundColor Red
+        exit
+    }
+} else {
+    Write-Host "✅ Carpeta de destino verificada: $destino" -ForegroundColor Green
+}
+
+# -------- Filtrar archivos --------
+Write-Host "`n🔎 Buscando archivos $extension modificados entre $($fechaInicio.ToShortDateString()) y $($fechaFin.ToShortDateString())..." -ForegroundColor Cyan
+
+$archivos = Get-ChildItem -Path $origen -Filter $extension -File | Where-Object {
+    $_.LastWriteTime -ge $fechaInicio -and $_.LastWriteTime -le $fechaFin
+}
+
+if ($archivos.Count -eq 0) {
+    Write-Host "⚠ No se encontraron archivos que cumplan con el criterio." -ForegroundColor Yellow
+    exit
+} else {
+    Write-Host "✅ Se encontraron $($archivos.Count) archivo(s) para mover.`n" -ForegroundColor Green
+}
+
+# -------- Mover archivos con validación de permisos --------
+foreach ($archivo in $archivos) {
+    $rutaDestino = Join-Path -Path $destino -ChildPath $archivo.Name
+
+    # Validar si se tiene acceso al archivo
+    try {
+        $stream = $archivo.OpenRead()
+        $stream.Close()
+    } catch {
+        $errorAcceso = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - 🔒 Sin acceso al archivo: $($archivo.FullName)"
+        Write-Host $errorAcceso -ForegroundColor DarkYellow
+        Add-Content -Path $logPath -Value $errorAcceso
+        continue
+    }
+
+    # Intentar mover archivo
+    try {
+        Copy-Item -Path $archivo.FullName -Destination $rutaDestino -Force
+
+        # Confirmar que se copió bien
+        if (Test-Path $rutaDestino) {
+            Remove-Item -Path $archivo.FullName -Force
+            $logOK = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - ✔️ Movido y eliminado: $($archivo.FullName) → $rutaDestino"
+            Write-Host $logOK -ForegroundColor Cyan
+            Add-Content -Path $logPath -Value $logOK
+        } else {
+            $logWarn = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - ⚠️ Copia realizada pero no se eliminó el original: $($archivo.FullName)"
+            Write-Host $logWarn -ForegroundColor Yellow
+            Add-Content -Path $logPath -Value $logWarn
+        }
+    } catch {
+        $logErr = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - ❌ Error al copiar/eliminar: $($archivo.FullName) - $($_.Exception.Message)"
+        Write-Host $logErr -ForegroundColor Red
+        Add-Content -Path $logPath -Value $logErr
+    }
+}
+
+Write-Host "`n📄 Proceso finalizado. Revisa el log en: $logPath" -ForegroundColor Green
