@@ -1,5 +1,14 @@
+<#
+Autor              : Claudio Aliste
+Email              : aliste.claudio@gmail.com
+Fecha creación     : 10/10/2024
+Fecha modificación : 
+Propósito          : Obtiene los Job creados en respaldo en Veeam y obtiene los servidores dentro de cada uno...En caso de mejorarlo, compartir la mejora
+Versión            : 1.1
+#>
+
 # Ruta del archivo CSV de salida
-$exportPath = "C:\Veeam\Listado_Jobs_VMs.csv"
+$exportPath = "C:\VeeamReport\Listado_Jobs_VMs.csv"
 
 # Crear carpeta si no existe
 $folder = Split-Path $exportPath
