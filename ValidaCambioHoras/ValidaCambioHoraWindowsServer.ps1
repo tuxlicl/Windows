@@ -22,10 +22,11 @@ function Write-Log {
 
 # === Lista de servidores ===
 $Servers = @(
-    "server1",
-    "server2",
-    "server3",
-    "server4",
+    “server1”,
+    “server2”,
+    “server3”,
+    “server4”,
+    
 )
 
 foreach ($Server in $Servers) {
@@ -77,3 +78,6 @@ foreach ($Server in $Servers) {
 }
 
 Write-Host "`n✅ Script finalizado. Revisa el log en: $logPath" -ForegroundColor Green
+
+
+
