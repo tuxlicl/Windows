@@ -1,0 +1,36 @@
+$servidores = @("server1", "server2", "server3", "server4", "server5" )
+$logPath = "C:\Logs\Inventario_Servidores_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
+if (!(Test-Path "C:\Logs")) {
+    New-Item -Path "C:\Logs" -ItemType Directory -Force | Out-Null
+}
+
+$resultados = @()
+
+foreach ($srv in $servidores) {
+    Write-Host "🔍 Consultando $srv..." -ForegroundColor Cyan
+    try {
+        if (Test-Connection -ComputerName $srv -Count 1 -Quiet) {
+            $ip = [System.Net.Dns]::GetHostAddresses($srv)[0].IPAddressToString
+            $bios = Get-WmiObject Win32_BIOS -ComputerName $srv -ErrorAction Stop
+            $serial = $bios.SerialNumber
+        } else {
+            $ip = "Sin respuesta"
+            $serial = "Sin respuesta"
+        }
+
+        $resultados += [pscustomobject]@{
+            Servidor = $srv
+            IP       = $ip
+            Serial   = $serial
+        }
+    } catch {
+        $resultados += [pscustomobject]@{
+            Servidor = $srv
+            IP       = "Error"
+            Serial   = "Error: $($_.Exception.Message)"
+        }
+    }
+}
+
+$resultados | Export-Csv -Path $logPath -NoTypeInformation -Encoding UTF8
+Write-Host "`n✅ Inventario generado en: $logPath" -ForegroundColor Green
