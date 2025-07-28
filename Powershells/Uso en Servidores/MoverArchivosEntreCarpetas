@@ -2,77 +2,112 @@
 Autor              : Claudio Aliste
 Email              : aliste.claudio@gmail.com
 Fecha creación     : 31/03/2025
-Fecha modificación : 
-Propósito          : Mueve archivos entre dos carpetas, buscando la extensión Necesaria y genera un log de salida del resultado
-Versión            : 2.0
+Última modificación: 28/07/2025
+Propósito          : Comprimir archivos .arc y moverlos a una ruta de red, con validaciones y logs
+Versión            : 5.0
 #>
 
-# ==================== CONFIGURACIÓN ====================
-$extension = ".7z"  # Cambia la extensión según lo necesites
-$origen    = "X:\xxxx\xx\xxxx" # Carpeta origen de datos a mover
-$destino   = "\\xxxx\x$\xxxxxxxx" # Carpeta de destino de archivos Puede ser dentro del server u otro servidor
-$logPath   = "C:\Logs\movimiento_robocopy_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-$statsPath = "C:\Logs\resumen_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-# =======================================================
+# ========== CONFIGURACIÓN ==========
+$origen = "xxx\xxx\xxx\xxx"
+$destino = "\\xxx\xxxx\xxxxx"
+$extensionOriginal = ".xxx"
+$extensionComprimida = ".xxxx"
+$sevenZipPath = "C:\Program Files\7-Zip\7z.exe"
+$logPath = "C:\Logs\movimiento_20250728_115049.log"
+$statsPath = "C:\Logs\resumen_20250728_115049.log"
+$horaInicio = Get-Date
+# ====================================
 
-# Crear carpeta de logs si no existe
-$logDir = Split-Path $logPath
-if (!(Test-Path $logDir)) {
-    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
-}
-
-# Verificar carpetas
-if (!(Test-Path $origen)) {
-    Write-Host "❌ Carpeta de origen no encontrada: $origen" -ForegroundColor Red
+# ========== VALIDACIONES INICIALES ==========
+if (!(Test-Path $sevenZipPath)) {
+    Write-Host "❌ 7-Zip no encontrado en $sevenZipPath" -ForegroundColor Red
     exit
-} else {
-    Write-Host "`n📁 Ruta analizada: $origen" -ForegroundColor Cyan
 }
 
-if (!(Test-Path $destino)) {
-    Write-Host "⚠ Carpeta de destino no encontrada. Intentando crear: $destino" -ForegroundColor Yellow
-    try {
-        New-Item -ItemType Directory -Path $destino -Force | Out-Null
-        Write-Host "✅ Carpeta de destino creada correctamente." -ForegroundColor Green
-    } catch {
-        Write-Host "❌ No se pudo crear la carpeta de destino: $_" -ForegroundColor Red
-        exit
+foreach ($ruta in @($origen, (Split-Path $logPath), $destino)) {
+    if (!(Test-Path $ruta)) {
+        try {
+            New-Item -Path $ruta -ItemType Directory -Force | Out-Null
+        } catch {
+            Write-Host "❌ No se pudo crear la ruta $ruta - $_" -ForegroundColor Red
+            exit
+        }
     }
-} else {
-    Write-Host "📦 Carpeta destino: $destino" -ForegroundColor Cyan
 }
+# ============================================
 
-# Analizar archivos
-$archivos = Get-ChildItem -Path $origen -Recurse -File -Filter "*$extension" -ErrorAction SilentlyContinue
-$cantidad = $archivos.Count
-$tamanoTotalGB = [math]::Round(($archivos | Measure-Object Length -Sum).Sum / 1GB, 2)
+# ========== COMPRESIÓN ==========
+Write-Host "`n🟡 Comenzando compresión..." -ForegroundColor Yellow
+$archivosArc = Get-ChildItem -Path $origen -Filter "*$extensionOriginal" -File
+$totalArc = $archivosArc.Count
 
-# Mostrar resumen
-Write-Host "📄 Extensión: $extension" -ForegroundColor Cyan
-Write-Host "📦 Archivos detectados: $cantidad" -ForegroundColor Cyan
-Write-Host "💾 Tamaño total: $tamanoTotalGB GB" -ForegroundColor Cyan
-Write-Host "========================================================="
+for ($i = 0; $i -lt $totalArc; $i++) {
+    $archivo = $archivosArc[$i]
+    $archivo7z = Join-Path -Path $archivo.DirectoryName -ChildPath ($archivo.BaseName + $extensionComprimida)
+    $porcentaje = [math]::Round(($i / $totalArc) * 100)
+    Write-Progress -Activity "🗜 Comprimiendo archivos" -Status $archivo.Name -PercentComplete $porcentaje
 
-# Guardar log resumen
+    if (Test-Path $archivo7z) {
+        Add-Content -Path $logPath -Value ("[{0}] ⏭ Ya existe: {1}" -f (Get-Date -Format 'HH:mm:ss'), $archivo7z)
+        continue
+    }
+
+    $args = @(
+        'a', '-t7z', '-mx=3', '-mmt=on',
+        "`"$archivo7z`"",
+        "`"$($archivo.FullName)`""
+    )
+
+    try {
+        $proceso = Start-Process -FilePath $sevenZipPath -ArgumentList ($args -join ' ') -NoNewWindow -Wait -PassThru
+        if (($proceso.ExitCode -eq 0 -or $proceso.ExitCode -eq 1) -and (Test-Path $archivo7z)) {
+            Add-Content -Path $logPath -Value ("[{0}] ✅ Comprimido: {1}" -f (Get-Date -Format 'HH:mm:ss'), $archivo.Name)
+            Remove-Item -Path $archivo.FullName -Force -ErrorAction SilentlyContinue
+        } else {
+            Add-Content -Path $logPath -Value ("[{0}] ❌ Error al comprimir: {1}. Código: {2}" -f (Get-Date -Format 'HH:mm:ss'), $archivo.Name, $proceso.ExitCode)
+        }
+    } catch {
+        Add-Content -Path $logPath -Value ("[{0}] ❌ Excepción: {1}" -f (Get-Date -Format 'HH:mm:ss'), $_.Exception.Message)
+    }
+}
+Write-Progress -Activity "🗜 Comprimiendo archivos" -Completed
+# =================================
+
+# ========== MOVIMIENTO ==========
+Write-Host "`n🚛 Moviendo archivos..." -ForegroundColor Cyan
+$archivos7z = Get-ChildItem -Path $origen -Filter "*$extensionComprimida" -File
+$total7z = $archivos7z.Count
+
+for ($i = 0; $i -lt $total7z; $i++) {
+    $archivo = $archivos7z[$i]
+    $destinoFinal = Join-Path -Path $destino -ChildPath $archivo.Name
+    $porcentaje = [math]::Round(($i / $total7z) * 100)
+    Write-Progress -Activity "🚛 Moviendo archivos" -Status $archivo.Name -PercentComplete $porcentaje
+
+    try {
+        Move-Item -Path $archivo.FullName -Destination $destinoFinal -Force -ErrorAction Stop
+        Add-Content -Path $logPath -Value ("[{0}] ✅ Movido: {1}" -f (Get-Date -Format 'HH:mm:ss'), $archivo.Name)
+    } catch {
+        Add-Content -Path $logPath -Value ("[{0}] ❌ Error al mover {1} - {2}" -f (Get-Date -Format 'HH:mm:ss'), $archivo.Name, $_.Exception.Message)
+    }
+}
+Write-Progress -Activity "🚛 Moviendo archivos" -Completed
+# =================================
+
+# ========== RESUMEN ==========
+$horaFin = Get-Date
+$duracion = New-TimeSpan -Start $horaInicio -End $horaFin
 $resumen = @"
-📂 Ruta analizada: $origen
-📁 Carpeta destino: $destino
-📄 Extensión: $extension
-📦 Archivos detectados: $cantidad
-💾 Tamaño total: $tamanoTotalGB GB
-Fecha: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-=========================================================
+🧾 Resumen de ejecución
+------------------------
+Inicio    : $horaInicio
+Fin       : $horaFin
+Duración  : $($duracion.ToString())
+Comprimidos: $totalArc
+Movidos     : $total7z
 "@
-Add-Content -Path $statsPath -Value $resumen
-
-# -------- ROBOT COPY MOVIMIENTO --------
-Write-Host "`n📦 Iniciando movimiento con Robocopy..." -ForegroundColor Yellow
-
-$robocopyCmd = "robocopy `"$origen`" `"$destino`" *$extension /MOV /R:1 /W:1 /TEE /LOG:`"$logPath`""
-Write-Host "`n🚚 Ejecutando: $robocopyCmd`n" -ForegroundColor Gray
-
-# Ejecutar y mostrar progreso en vivo
-Invoke-Expression $robocopyCmd
-
-Write-Host "`n✅ Movimiento completado. Revisa el log:" -ForegroundColor Green
-Write-Host "   $logPath" -ForegroundColor DarkGray
+$resumen | Add-Content -Path $statsPath
+Write-Host "`n✅ Proceso finalizado. Logs:" -ForegroundColor Green
+Write-Host "   Log de ejecución: $logPath"
+Write-Host "   Resumen final   : $statsPath"
+# =================================
