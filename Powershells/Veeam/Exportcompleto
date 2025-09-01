@@ -1,0 +1,44 @@
+<#
+Autor              : Claudio Aliste
+Email              : aliste.claudio@gmail.com
+Fecha creación     : 10/10/2024
+Fecha modificación : 
+Propósito          : Obtiene los Job creados en respaldo en Veeam y obtiene los servidores dentro de cada uno...En caso de mejorarlo, compartir la mejora
+Versión            : 1.1
+#>
+
+# Ruta del archivo CSV de salida
+$exportPath = "C:\VeeamReport\Listado_Jobs_VMs.csv"
+
+# Crear carpeta si no existe
+$folder = Split-Path $exportPath
+if (!(Test-Path $folder)) {
+    New-Item -Path $folder -ItemType Directory | Out-Null
+}
+
+# Cargar el módulo de Veeam si no está cargado
+if (-not (Get-Module -ListAvailable -Name Veeam.Backup.PowerShell)) {
+    Import-Module "C:\Program Files\Veeam\Backup and Replication\Backup\Veeam.Backup.PowerShell.dll"
+}
+
+# Inicializar lista de resultados
+$results = @()
+
+# Obtener todos los jobs
+Get-VBRJob | ForEach-Object {
+    $job = $_
+    $jobObjects = Get-VBRJobObject -Job $job
+
+    foreach ($obj in $jobObjects) {
+        $results += [PSCustomObject]@{
+            JobName = $job.Name
+            VMName  = $obj.Name
+            ObjectType = $obj.ObjectType
+        }
+    }
+}
+
+# Exportar a CSV
+$results | Export-Csv -Path $exportPath -NoTypeInformation -Encoding UTF8
+
+Write-Host "✅ Exportación completada: $exportPath"

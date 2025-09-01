@@ -1,0 +1,8 @@
+Remove-RecipientPermission -Identity buzoncompartido@buzon.cl -Trustee usuario@buzon.cl -AccessRights SendAs
+Remove-MailboxPermission -Identity buzoncompartido@buzon.cl -User usuario@buzon.cl -AccessRights FullAccess
+
+Add-MailboxPermission -Identity uzoncompartido@buzon.cl -User usuario@buzon.cl -AccessRights FullAccess -AutoMapping $false
+Add-RecipientPermission -Identity uzoncompartido@buzon.cl -Trustee usuario@buzon.cl -AccessRights SendAs
+
+
+
