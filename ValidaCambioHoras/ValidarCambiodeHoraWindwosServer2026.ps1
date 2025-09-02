@@ -1,5 +1,5 @@
 # Autor: Claudio Aliste Requena
-# Revisión: 2.0 (2025)
+# Revisión: 2.1 (2025)
 # Descripción:
 # Este script se conecta a servidores remotos vía PowerShell Remoting,
 # valida la zona horaria configurada, y muestra cuándo inicia y termina
@@ -26,21 +26,44 @@ $Servers = @(
     "server1",
     "server2",
     "server3",
-    "server4"
+    "server4",
+    "server5",
+    "server6",
+    "server7",
+    "server8",
+    "server9",
+    "server10",
+    "server11"
 )
 
 foreach ($Server in $Servers) {
-    try {
-        Write-Log "------------------------------------------------------------"
-        Write-Log "Conectando a $Server..."
+    Write-Log "------------------------------------------------------------"
+    Write-Log "Conectando a $Server..."
 
-        $Session = New-PSSession -ComputerName $Server -Credential $cred
+    # Validación de conectividad básica
+    if (-not (Test-Connection -ComputerName $Server -Count 1 -Quiet)) {
+        Write-Log "❌ No se puede resolver o contactar al servidor: $Server"
+        continue
+    }
+
+    try {
+        $Session = New-PSSession -ComputerName $Server -Credential $cred -ErrorAction Stop
+
+        if ($null -eq $Session) {
+            Write-Log "❌ No se pudo establecer sesión con ${Server}: sesión nula."
+            continue
+        }
 
         Invoke-Command -Session $Session -ScriptBlock {
             $year = 2025
             $tz = [System.TimeZoneInfo]::Local
-            $rules = $tz.GetAdjustmentRules() | Where-Object {
+
+            $rulesStart = $tz.GetAdjustmentRules() | Where-Object {
                 $_.DateStart.Year -le $year -and $_.DateEnd.Year -ge $year
+            }
+
+            $rulesEnd = $tz.GetAdjustmentRules() | Where-Object {
+                $_.DateStart.Year -le ($year + 1) -and $_.DateEnd.Year -ge ($year + 1)
             }
 
             Write-Output "Servidor: $env:COMPUTERNAME"
@@ -48,9 +71,9 @@ foreach ($Server in $Servers) {
             Write-Output "ID Zona Horaria: $($tz.Id)"
             Write-Output "Horario de Verano habilitado: $($tz.SupportsDaylightSavingTime)"
 
-            if ($rules) {
-                $start = $rules.DaylightTransitionStart
-                $end = $rules.DaylightTransitionEnd
+            if ($rulesStart -and $rulesEnd) {
+                $start = $rulesStart.DaylightTransitionStart
+                $end   = $rulesEnd.DaylightTransitionEnd
 
                 function Get-DateFromTransition($transition, $year) {
                     $dayOfWeek = [int]$transition.DayOfWeek
@@ -72,7 +95,7 @@ foreach ($Server in $Servers) {
                 Write-Output "🟢 Inicio horario de verano: $($dstStart.ToString('dd/MM/yyyy HH:mm'))"
                 Write-Output "🔴 Fin horario de verano:    $($dstEnd.ToString('dd/MM/yyyy HH:mm'))"
             } else {
-                Write-Output "⚠️ No se encontraron reglas de horario de verano para $year."
+                Write-Output "⚠️ No se encontraron reglas de horario de verano para $year o $($year + 1)."
             }
         } | ForEach-Object {
             Write-Log $_
