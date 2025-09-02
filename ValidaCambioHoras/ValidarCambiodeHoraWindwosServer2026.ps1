@@ -67,7 +67,7 @@ foreach ($Server in $Servers) {
                 }
 
                 $dstStart = Get-DateFromTransition $start $year
-                $dstEnd   = Get-DateFromTransition $end $year
+                $dstEnd   = Get-DateFromTransition $end ($year + 1)
 
                 Write-Output "🟢 Inicio horario de verano: $($dstStart.ToString('dd/MM/yyyy HH:mm'))"
                 Write-Output "🔴 Fin horario de verano:    $($dstEnd.ToString('dd/MM/yyyy HH:mm'))"
