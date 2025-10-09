@@ -11,7 +11,7 @@ GivenName,Surname,SamAccountName,Title,Department,DisplayName,UserPrincipalName,
 - Surname opcional.
 - Password alfanumérica (18). No fuerza cambio al primer logon. (Función sin uso de -Count).
 - Soporta -UpdateIfExists, -MoveIfExists y -WhatIf.
-- La carpeta csv debe estar en C:\Temp\nombre.csv
+
 Uso recomendado (simulación):
 .\New-ADUsers_AgenciaRamos.ps1 -CsvPath C:\Temp\usuarios.csv -UpdateIfExists -MoveIfExists -CreateOUIfMissing -WhatIf
 #>
@@ -57,14 +57,12 @@ function Read-UsersCsv {
   if (-not (Test-Path $Path)) { throw "CSV no encontrado: $Path" }
 
   $lines = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 -ErrorAction Stop -ReadCount 0
-  # Normalizar saltos
   $lines = $lines -replace "`r`n","`n" -replace "`r","`n"
   $rows  = $lines -split "`n"
   $rows  = $rows | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
 
   if ($rows.Count -lt 2) { throw "CSV vacío o sin filas de datos." }
 
-  # Validar cabecera exacta (8 columnas esperadas)
   $header = $rows[0].Trim()
   $expectedHeader = 'GivenName,Surname,SamAccountName,Title,Department,DisplayName,UserPrincipalName,OU'
   if ($header -ne $expectedHeader) {
@@ -75,20 +73,14 @@ function Read-UsersCsv {
 
   for ($i=1; $i -lt $rows.Count; $i++) {
     $line = $rows[$i]
-
-    # Si la línea está completamente vacía, saltar
     if ([string]::IsNullOrWhiteSpace($line)) { continue }
 
-    # Partir por coma SIN respetar comillas (porque precisamente nos llegan sin comillas)
     $parts = $line.Split(',')
-
-    # Debe haber al menos 8 columnas; si hay menos, es inválida
     if ($parts.Count -lt 8) {
       Write-Log "Fila $i inválida (menos de 8 columnas): $line" 'ERROR'
       continue
     }
 
-    # Tomar 7 primeras columnas como fijas; TODO lo demás se une como OU
     $GivenName         = $parts[0].Trim()
     $Surname           = $parts[1].Trim()
     $SamAccountName    = $parts[2].Trim()
@@ -98,7 +90,6 @@ function Read-UsersCsv {
     $UserPrincipalName = $parts[6].Trim()
     $OU                = ($parts[7..($parts.Count-1)] -join ',').Trim()
 
-    # Normalizar tabs accidentales
     $GivenName         = ($GivenName         -replace "`t",' ').Trim()
     $Surname           = ($Surname           -replace "`t",' ').Trim()
     $SamAccountName    = ($SamAccountName    -replace "`t",' ').Trim()
@@ -140,37 +131,31 @@ if (-not (Get-ADOrganizationalUnit -Identity $TargetOU -ErrorAction SilentlyCont
 }
 
 # --- Utilidades ---
-# (Corregida: sin uso de -Count para evitar el error "Cannot convert System.Object[] ... to Int32")
 function New-RandomPassword {
   param([int]$Length = 18)  # alfanumérica 18
   if ($Length -lt 3) { throw "La longitud mínima debe permitir 1 mayúscula, 1 minúscula y 1 dígito." }
 
-  # Conjuntos (sin caracteres confusos)
   $U = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
   $L = 'abcdefghijkmnopqrstuvwxyz'
   $D = '23456789'
 
-  # Helper: toma un char aleatorio por índice
   function Get-RandChar([string]$s) {
     $idx = Get-Random -Min 0 -Max $s.Length
     return $s[$idx]
   }
 
-  # Requisitos mínimos
   $req = @(
     (Get-RandChar $U),
     (Get-RandChar $L),
     (Get-RandChar $D)
   )
 
-  # Pool total y construcción del resto
   $pool = $U + $L + $D
   $rest = New-Object System.Collections.Generic.List[char]
   for ($i = 0; $i -lt ($Length - 3); $i++) {
     $rest.Add( (Get-RandChar $pool) ) | Out-Null
   }
 
-  # Unir y barajar (Fisher–Yates)
   $all = New-Object System.Collections.Generic.List[char]
   $req | ForEach-Object { [void]$all.Add($_) }
   $rest | ForEach-Object { [void]$all.Add($_) }
@@ -213,7 +198,6 @@ function Ensure-OU {
   }
 }
 
-# Convierte valor OU a DN usable (admite DN, ruta, nombre corto), anclando bajo TargetOU
 function Resolve-OU {
   param(
     [string]$InputOU,
@@ -223,26 +207,21 @@ function Resolve-OU {
   if ([string]::IsNullOrWhiteSpace($InputOU)) { return $DefaultOU }
   $ouStr = $InputOU.Trim()
 
-  # Si ya viene DN completo (contiene ,DC=)
   if ($ouStr -match ',DC=') { return $ouStr }
 
   $BaseAnchor = $DefaultOU
 
-  # Empieza con OU= (sin ,DC=) -> anclar bajo Usuarios
   if ($ouStr -like 'OU=*' -and $ouStr -notmatch ',DC=') { return "$ouStr,$BaseAnchor" }
 
-  # Ruta con / o \
   if ($ouStr -match '[/\\]') {
     $segments = $ouStr -split '[/\\]' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     $dn = ($segments | ForEach-Object { 'OU=' + $_.Trim() }) -join ','
     return "$dn,$BaseAnchor"
   }
 
-  # Nombre corto
   return "OU=$ouStr,$BaseAnchor"
 }
 
-# Verifica existencia de OU; crea si se permite; si no, fallback a TargetOU (y valida)
 function Get-UsableOU {
   param(
     [string]$PreferredOU,
@@ -261,13 +240,11 @@ $created=0; $updated=0; $moved=0; $skipped=0; $errors=0
 
 foreach ($r in $rows) {
   try {
-    # Saltar filas completamente vacías
     $allValues = [string]::Join('', @($r.GivenName,$r.Surname,$r.SamAccountName,$r.Title,$r.Department,$r.DisplayName,$r.UserPrincipalName,$r.OU))
     if ([string]::IsNullOrWhiteSpace($allValues)) { continue }
 
-    # Normalizar (quitar tabs / espacios)
     $GivenName         = ($r.GivenName         -replace "`t",' ').Trim()
-    $Surname           = ($r.Surname           -replace "`t",' ').Trim()   # opcional
+    $Surname           = ($r.Surname           -replace "`t",' ').Trim()
     $SamAccountName    = ($r.SamAccountName    -replace "`t",' ').Trim()
     $Title             = ($r.Title             -replace "`t",' ').Trim()
     $Department        = ($r.Department        -replace "`t",' ').Trim()
@@ -275,7 +252,6 @@ foreach ($r in $rows) {
     $UserPrincipalName = ($r.UserPrincipalName -replace "`t",' ').Trim()
     $RowOU             = ($r.OU                -replace "`t",' ').Trim()
 
-    # Validar mínimos
     if ([string]::IsNullOrWhiteSpace($GivenName) -or
         [string]::IsNullOrWhiteSpace($SamAccountName) -or
         [string]::IsNullOrWhiteSpace($DisplayName) -or
@@ -287,18 +263,13 @@ foreach ($r in $rows) {
 
     Write-Log "OU (CSV crudo) para ${SamAccountName}: '${RowOU}'"
 
-    # Resolver OU preferida (puede ser DN, nombre o ruta)
     $PreferredOU = Resolve-OU -InputOU $RowOU -DefaultOU $TargetOU -DomainDNParam $DomainDN
-
-    # Obtener OU utilizable (verifica existencia / crea / fallback)
     $EffectiveOU = Get-UsableOU -PreferredOU $PreferredOU -FallbackOU $TargetOU
     Write-Log "OU final para ${SamAccountName}: ${EffectiveOU}"
 
-    # ¿Existe ya el usuario?
     $existing = Get-ADUser -Filter "sAMAccountName -eq '$SamAccountName'" -Properties * -ErrorAction SilentlyContinue
 
     if ($existing) {
-      # Actualizar atributos si se pidió
       if ($UpdateIfExists) {
         $setParams = @{
           Identity          = $existing.DistinguishedName
@@ -318,7 +289,6 @@ foreach ($r in $rows) {
         }
       }
 
-      # Mover si está en otra OU y se pidió
       if ($MoveIfExists) {
         $currentOU = Get-UserCurrentOU -UserDN $existing.DistinguishedName
         if ($currentOU -and ($currentOU -ne $EffectiveOU)) {
@@ -342,7 +312,6 @@ foreach ($r in $rows) {
       continue
     }
 
-    # Crear usuario nuevo
     $pwdPlain  = New-RandomPassword -Length 18
     $pwdSecure = ConvertTo-SecureString -String $pwdPlain -AsPlainText -Force
 
@@ -377,3 +346,12 @@ foreach ($r in $rows) {
 
 Write-Log "Resumen -> Creados: $created | Actualizados: $updated | Movidos: $moved | Omitidos: $skipped | Errores: $errors"
 Write-Host "`n✅ Log: $LogPath"
+
+# ======== LÍNEAS EXTRA DE VERIFICACIÓN Y REPORTE ========
+Get-ADUser -Filter * -SearchBase "OU=Usuarios,DC=agenciaramos,DC=local" -Properties DisplayName,DistinguishedName |
+  Select DisplayName,DistinguishedName | Sort DisplayName
+
+Get-ADUser -Filter * -SearchBase "OU=Usuarios,DC=agenciaramos,DC=local" -Properties Title,Department,DisplayName,UserPrincipalName |
+  Select DisplayName,SamAccountName,UserPrincipalName,Title,Department,DistinguishedName |
+  Export-Csv C:\Logs\AD_Usuarios_Reporte.csv -NoTypeInformation -Encoding UTF8
+Write-Host "📄 Reporte exportado a: C:\Logs\AD_Usuarios_Reporte.csv"
